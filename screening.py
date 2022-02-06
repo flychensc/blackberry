@@ -33,8 +33,12 @@ def classify(context, order_book_id, order_day, historys):
     else:
         return
 
-    context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'k'] = round(k, 2)
-    context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'classify'] = label
+    context.classifying = context.classifying.append({
+                    "order_day": order_day,
+                    "order_book_id": order_book_id,
+                    'k': round(k, 2),
+                    'classify': label,
+                }, ignore_index=True)
 
 
 def init(context):
