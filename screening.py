@@ -4,6 +4,7 @@ from scipy.optimize import leastsq
 import datetime as dt
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 import configparser
 
@@ -18,20 +19,28 @@ def error(p, x, y):
     return func(p, x) - y
 
 
-def classify(context, order_book_id, order_day, historys):
-    p0 = [1, historys['close'][0]]
+def classify(context, order_book_id, order_day, historys, disp=False):
+    Yi = historys['close']
+    Xi = np.sort(Yi)
 
-    Para = leastsq(error, p0, args=(np.arange(1, context.POSITION_DAY+1), historys['close']))
+    #p0 = [Xi[0], Yi[0]]
+    p0 = [1, 1]
 
-    k, _b = Para[0]
+    Para = leastsq(error, p0, args=(Xi, Yi))
+
+    k, b = Para[0]
+
+    if disp:
+        print(k, b)
+        plt.plot(Xi, Yi, color='green', linewidth=2)
+        plt.plot(Xi, k*Xi+b, color='red', linewidth=2)
+        plt.show()
 
     label = "holding"
     if k <= context.K_LOSS:
         label = "loss"
     elif k >= context.K_PROFIT:
         label = "profit"
-    else:
-        return
 
     context.classifying = context.classifying.append({
                     "order_day": order_day,
