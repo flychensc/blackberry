@@ -46,7 +46,7 @@ def classify(context, order_book_id, order_day, historys, disp=False):
         label = "HOLD"
     elif k >= context.L2:
         label = "LOSS1"
-    elif k >= context.L2:
+    elif k >= context.L3:
         label = "LOSS2"
     else:
         label = "LOSS3"
