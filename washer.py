@@ -38,18 +38,11 @@ def classify(context, order_book_id, order_day, historys, disp=False):
 
     k = round(k, 2)
 
-    if k > context.H2:
-        label = "PROFIT2"
-    elif k >= context.H1:
-        label = "PROFIT1"
-    elif k >= context.L1:
-        label = "HOLD"
-    elif k >= context.L2:
-        label = "LOSS1"
-    elif k >= context.L3:
-        label = "LOSS2"
-    else:
-        label = "LOSS3"
+    label = "holding"
+    if k <= context.K_LOSS:
+        label = "loss"
+    elif k >= context.K_PROFIT:
+        label = "profit"
 
     context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'k'] = k
     context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'classify'] = label
@@ -65,18 +58,15 @@ def init(context):
     context.FREQUENCY = '1d'
 
     context.POSITION_DAY = config.getint('POLICY', 'POSITION_DAY')
-    context.L3 = config.getfloat('POLICY', 'L3')
-    context.L2 = config.getfloat('POLICY', 'L2')
-    context.L1 = config.getfloat('POLICY', 'L1')
-    context.H1 = config.getfloat('POLICY', 'H1')
-    context.H2 = config.getfloat('POLICY', 'H2')
+    context.K_LOSS = config.getfloat('POLICY', 'K_LOSS')
+    context.K_PROFIT = config.getfloat('POLICY', 'K_PROFIT')
 
     # context.classifying = pd.DataFrame(columns=['order_day','order_book_id', 'k', 'classify'])
     context.classifying = pd.read_csv("picking.csv", parse_dates=["order_day"], date_parser=lambda x: dt.datetime.strptime(x, "%Y-%m-%d"))
     # CONVERT dtype: datetime64[ns] to datetime.date
     context.classifying['order_day'] = context.classifying['order_day'].dt.date
 
-    context.classifying = context.classifying.assign(profit=np.nan, classify="")
+    context.classifying = context.classifying.assign(k=np.nan, classify="")
 
 
 def after_trading(context):
