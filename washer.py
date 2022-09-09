@@ -26,6 +26,7 @@ def classify(context, order_book_id, order_day, historys, disp=False):
     #p0 = [Xi[0], Yi[0]]
     p0 = [1, 1]
 
+    # 最小二乘法拟合直线
     Para = leastsq(error, p0, args=(Xi, Yi))
 
     k, b = Para[0]
@@ -81,6 +82,7 @@ def after_trading(context):
                                      (context.classifying['order_day'] < day) &
                                      (context.classifying['classify'] == "")]
 
+        # 该票所有的入选时间点
         for order_day in order_data['order_day'].sort_values():
             order_day64 = np.int64(order_day.strftime("%Y%m%d%H%M%S"))
             # 逐次缩小historys

@@ -26,6 +26,7 @@ def classify(context, order_book_id, order_day, historys, disp=False):
     #p0 = [Xi[0], Yi[0]]
     p0 = [1, 1]
 
+    # 最小二乘法拟合直线
     Para = leastsq(error, p0, args=(Xi, Yi))
 
     k, b = Para[0]
@@ -78,6 +79,7 @@ def after_trading(context):
 
         if not historys.size: continue
 
+        # 遍历所有交易日期, 一段一段的分析
         while historys.size > context.POSITION_DAY:
             order_day = dt.datetime.strptime(str(historys['datetime'][0]), "%Y%m%d%H%M%S").date()
             classify(context, order_book_id, order_day, historys[:context.POSITION_DAY])
