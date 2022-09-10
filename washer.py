@@ -52,7 +52,7 @@ def classify(context, order_book_id, order_day, historys, disp=False):
 def init(context):
     print(dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "START")
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read('../cranberry/preparing/config.ini')
 
     context.BAR_COUNT = (dt.datetime.strptime(config.get("CLASSIFY", "DAY"), "%Y-%m-%d") - dt.datetime.strptime(config.get("PICK", "START_DAY"), "%Y-%m-%d")).days
     context.BAR_COUNT = int(context.BAR_COUNT/7*5)
