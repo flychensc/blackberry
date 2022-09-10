@@ -20,8 +20,9 @@ def error(p, x, y):
 
 
 def classify(context, order_book_id, order_day, historys, disp=False):
-    Yi = historys['close']
-    Xi = np.sort(Yi)
+    # 按比例拟合
+    Yi = historys['close']/historys['close'][0]
+    Xi = np.linspace(1, pow(context.DAY_PROFIT, Yi.size), num=Yi.size)
 
     #p0 = [Xi[0], Yi[0]]
     p0 = [1, 1]
@@ -39,10 +40,9 @@ def classify(context, order_book_id, order_day, historys, disp=False):
 
     k = round(k, 2)
 
-    label = "holding"
-    if k <= context.K_LOSS:
-        label = "loss"
-    elif k >= context.K_PROFIT:
+    # 不赚就是亏
+    label = "loss"
+    if k >= context.K_PROFIT:
         label = "profit"
 
     context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'k'] = k
@@ -59,8 +59,8 @@ def init(context):
     context.FREQUENCY = '1d'
 
     context.POSITION_DAY = config.getint('POLICY', 'POSITION_DAY')
-    context.K_LOSS = config.getfloat('POLICY', 'K_LOSS')
     context.K_PROFIT = config.getfloat('POLICY', 'K_PROFIT')
+    context.DAY_PROFIT = config.getfloat('POLICY', 'DAY_PROFIT')
 
     # context.classifying = pd.DataFrame(columns=['order_day','order_book_id', 'k', 'classify'])
     context.classifying = pd.read_csv("picking.csv", parse_dates=["order_day"], date_parser=lambda x: dt.datetime.strptime(x, "%Y-%m-%d"))
