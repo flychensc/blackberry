@@ -20,8 +20,9 @@ def error(p, x, y):
 
 
 def classify(context, order_book_id, order_day, historys, disp=False):
-    Yi = historys['close']
-    Xi = np.sort(Yi)
+    # 按比例拟合
+    Yi = historys['close']/historys['close'][0]
+    Xi = np.linspace(1, pow(context.DAY_PROFIT, Yi.size), num=Yi.size)
 
     #p0 = [Xi[0], Yi[0]]
     p0 = [1, 1]
@@ -37,10 +38,9 @@ def classify(context, order_book_id, order_day, historys, disp=False):
         plt.plot(Xi, k*Xi+b, color='red', linewidth=2)
         plt.show()
 
-    label = "holding"
-    if k <= context.K_LOSS:
-        label = "loss"
-    elif k >= context.K_PROFIT:
+    # 不赚就是亏
+    label = "loss"
+    if k >= context.K_PROFIT:
         label = "profit"
 
     context.classifying = context.classifying.append({
@@ -62,8 +62,8 @@ def init(context):
 
     context.POSITION_DAY = config.getint('POLICY', 'POSITION_DAY')
     context.SHIFT = config.getint('POLICY', 'SHIFT')
-    context.K_LOSS = config.getfloat('POLICY', 'K_LOSS')
     context.K_PROFIT = config.getfloat('POLICY', 'K_PROFIT')
+    context.DAY_PROFIT = config.getfloat('POLICY', 'DAY_PROFIT')
 
     context.CANDLE_PERIOD = config.getint('CANDLE', 'PERIOD')
     context.BAR_COUNT = context.BAR_COUNT - context.CANDLE_PERIOD
