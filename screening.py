@@ -41,7 +41,7 @@ def classify(context, order_book_id, order_day, historys):
     elif low_days < high_days:
         context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'classify'] = "B"
     # 先涨后跌
-    else:
+    elif low_days > high_days:
         context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'classify'] = "C"
 
 
@@ -55,8 +55,6 @@ def init(context):
     context.FREQUENCY = '1d'
 
     context.POSITION_DAY = config.getint('POLICY', 'POSITION_DAY')
-    context.SHIFT = config.getint('POLICY', 'SHIFT')
-    context.K_PROFIT = config.getfloat('POLICY', 'K_PROFIT')
 
     context.classifying = pd.read_csv("picking.csv", parse_dates=["order_day"], date_parser=lambda x: dt.datetime.strptime(x, "%Y-%m-%d"))
     # CONVERT dtype: datetime64[ns] to datetime.date
@@ -88,5 +86,7 @@ def after_trading(context):
             classify(context, order_book_id, order_day, historys[:context.POSITION_DAY])
 
     if context.run_info.end_date == day:
+        # 丢弃空行
+        context.classifying.drop(context.classifying[context.classifying["classify"].isna()].index, inplace=True)
         context.classifying.to_csv('classifying.csv', index=False)
         print(dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "END")
