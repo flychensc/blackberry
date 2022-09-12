@@ -92,6 +92,6 @@ def after_trading(context):
 
     if context.run_info.end_date == day:
         # 丢弃空行
-        context.classifying.drop(context.classifying[context.classifying["classify"].isna()].index, inplace=True)
+        context.classifying.drop(context.classifying[context.classifying["classify"] == ""].index, inplace=True)
         context.classifying.to_csv('classifying.csv', index=False)
         print(dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "END")
