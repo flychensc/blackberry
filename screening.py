@@ -80,6 +80,11 @@ def after_trading(context):
             order_day64 = np.int64(order_day.strftime("%Y%m%d%H%M%S"))
             # 逐次缩小historys
             historys = historys[(historys['datetime'] >= order_day64)]
+
+            # fix bug: 可能不是同一天
+            if historys['datetime'][0] != order_day64:
+                continue
+
             # 数据不足
             if historys.size < context.POSITION_DAY:
                 break
