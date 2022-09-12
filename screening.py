@@ -9,46 +9,40 @@ import matplotlib.pyplot as plt
 import configparser
 
 
-# refer to https://blog.csdn.net/qq_44158369/article/details/120205029
-def func(p, x):
-    k, b = p
-    return k * x + b
+def classify(context, order_book_id, order_day, historys):
+    cost = historys['close'][0]
+    # 跳过当天
+    historys = historys[1:]
 
+    # 下跌比例
+    low = historys['close'].min()/cost - 1
+    # 过了几天
+    low_days = historys['close'].argmin() + 1
 
-def error(p, x, y):
-    return func(p, x) - y
+    # 上涨比例
+    high = historys['close'].max()/cost - 1
+    # 过了几天
+    high_days = historys['close'].argmax() + 1
 
+    # print(low, low_days, high, high_days)
 
-def classify(context, order_book_id, order_day, historys, disp=False):
-    # 按比例拟合
-    Yi = historys['close']/historys['close'][0]
-    Xi = np.linspace(1, pow(context.DAY_PROFIT, Yi.size), num=Yi.size)
+    context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'low'] = low
+    context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'low_days'] = low_days
+    context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'high'] = high
+    context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'high_days'] = high_days
 
-    #p0 = [Xi[0], Yi[0]]
-    p0 = [1, 1]
-
-    # 最小二乘法拟合直线
-    Para = leastsq(error, p0, args=(Xi, Yi))
-
-    k, b = Para[0]
-
-    if disp:
-        print(k, b)
-        plt.plot(Xi, Yi, color='green', linewidth=2)
-        plt.plot(Xi, k*Xi+b, color='red', linewidth=2)
-        plt.show()
-
-    # 不赚就是亏
-    label = "loss"
-    if k >= context.K_PROFIT:
-        label = "profit"
-
-    context.classifying = context.classifying.append({
-                    "order_day": order_day,
-                    "order_book_id": order_book_id,
-                    'k': round(k, 2),
-                    'classify': label,
-                }, ignore_index=True)
+    # 最低的涨幅都大于0
+    if low > 0:
+        context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'classify'] = "A"
+    # 最高的涨幅都小于0
+    elif high < 0:
+        context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'classify'] = "D"
+    # 先跌后涨
+    elif low_days < high_days:
+        context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'classify'] = "B"
+    # 先涨后跌
+    else:
+        context.classifying.loc[(context.classifying['order_day'] == order_day) & (context.classifying['order_book_id'] == order_book_id), 'classify'] = "C"
 
 
 def init(context):
@@ -56,19 +50,19 @@ def init(context):
     config = configparser.ConfigParser()
     config.read('../cranberry/preparing/config.ini')
 
-    context.BAR_COUNT = (dt.datetime.strptime(config.get("PICK", "END_DAY"), "%Y-%m-%d") - dt.datetime.strptime(config.get("PICK", "START_DAY"), "%Y-%m-%d")).days
+    context.BAR_COUNT = (dt.datetime.strptime(config.get("CLASSIFY", "DAY"), "%Y-%m-%d") - dt.datetime.strptime(config.get("PICK", "START_DAY"), "%Y-%m-%d")).days
     context.BAR_COUNT = int(context.BAR_COUNT/7*5)
     context.FREQUENCY = '1d'
 
     context.POSITION_DAY = config.getint('POLICY', 'POSITION_DAY')
     context.SHIFT = config.getint('POLICY', 'SHIFT')
     context.K_PROFIT = config.getfloat('POLICY', 'K_PROFIT')
-    context.DAY_PROFIT = config.getfloat('POLICY', 'DAY_PROFIT')
 
-    context.CANDLE_PERIOD = config.getint('CANDLE', 'PERIOD')
-    context.BAR_COUNT = context.BAR_COUNT - context.CANDLE_PERIOD
+    context.classifying = pd.read_csv("picking.csv", parse_dates=["order_day"], date_parser=lambda x: dt.datetime.strptime(x, "%Y-%m-%d"))
+    # CONVERT dtype: datetime64[ns] to datetime.date
+    context.classifying['order_day'] = context.classifying['order_day'].dt.date
 
-    context.classifying = pd.DataFrame(columns=['order_day', 'order_book_id', 'k', 'classify'])
+    context.classifying = context.classifying.assign(low=np.nan, low_days=np.nan, high=np.nan, high_days=np.nan, classify="")
 
 
 def after_trading(context):
@@ -79,14 +73,20 @@ def after_trading(context):
 
         if not historys.size: continue
 
-        # 遍历所有交易日期, 一段一段的分析
-        while historys.size > context.POSITION_DAY:
-            order_day = dt.datetime.strptime(str(historys['datetime'][0]), "%Y%m%d%H%M%S").date()
-            classify(context, order_book_id, order_day, historys[:context.POSITION_DAY])
-            historys = historys[context.SHIFT:]
+        order_data = context.classifying[(context.classifying['order_book_id'] == order_book_id) &
+                                     (context.classifying['order_day'] < day) &
+                                     (context.classifying['classify'] == "")]
 
+        # 该票所有的入选时间点
+        for order_day in order_data['order_day'].sort_values():
+            order_day64 = np.int64(order_day.strftime("%Y%m%d%H%M%S"))
+            # 逐次缩小historys
+            historys = historys[(historys['datetime'] >= order_day64)]
+            # 数据不足
+            if historys.size < context.POSITION_DAY:
+                break
+            classify(context, order_book_id, order_day, historys[:context.POSITION_DAY])
 
     if context.run_info.end_date == day:
         context.classifying.to_csv('classifying.csv', index=False)
         print(dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "END")
-
