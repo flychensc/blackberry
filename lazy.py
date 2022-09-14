@@ -28,33 +28,41 @@ def init(context):
     context.TAKE_PROFIT = config.getfloat('POLICY', 'TAKE_PROFIT')
     context.STOP_LOSS = config.getfloat('POLICY', 'STOP_LOSS')
 
+    context.SHIFT = config.getfloat('POLICY', 'SHIFT')
+
     context.POSITION_DAY = config.getfloat('POLICY', 'POSITION_DAY')
     context.STOCKS_NUM = config.getfloat('POLICY', 'STOCKS_NUM')
 
     context.stocks = dict()
-    context.my_info = dict()
+    context.params = dict()
 
 
 def handle_bar(context, bar_dict):
     day = context.now.date()
 
+    # 持仓的
     for position in get_positions():
-        # 现价除以成本
-        profit = bar_dict[position.order_book_id].close/context.my_info[position.order_book_id]["price"]
+        # fix bug: 除权引起价格变化，触发止损
+        # 1. 成本 = 市值-盈利
+        # 2. 市值/成本
+        profit = position.market_value/(position.market_value-position.pnl)
 
-        if profit < context.STOP_LOSS:
+        if profit < context.params[position.order_book_id]["STOP_LOSS"]:
             # 进行清仓
             print(f"止损卖出{position.order_book_id} {(profit-1)*100:.2f}%")
             order_target_percent(position.order_book_id, 0)
-        elif profit > context.TAKE_PROFIT:
-            # 进行清仓
-            print(f"止盈卖出{position.order_book_id} {(profit-1)*100:.2f}%")
-            order_target_percent(position.order_book_id, 0)
-        if (day - context.my_info[position.order_book_id]["day"]).days > context.POSITION_DAY:
+        elif profit > context.params[position.order_book_id]["TAKE_PROFIT"]:
+            # 滑动窗口
+            print(f"更新{position.order_book_id} {(profit-1)*100:.2f}%")
+            context.params[position.order_book_id]["STOP_LOSS"] = context.params[position.order_book_id]["TAKE_PROFIT"] - context.SHIFT
+            context.params[position.order_book_id]["TAKE_PROFIT"] = context.params[position.order_book_id]["TAKE_PROFIT"] + context.SHIFT
+            context.params[position.order_book_id]["day"] = day
+        if (day - context.params[position.order_book_id]["day"]).days > context.POSITION_DAY:
             # 进行清仓
             print(f"超期卖出{position.order_book_id} {(profit-1)*100:.2f}%")
             order_target_percent(position.order_book_id, 0)
 
+    # 候选的
     for symbol in list(context.stocks):
 
         # 超幅回撤
@@ -70,16 +78,19 @@ def handle_bar(context, bar_dict):
         # 低于买点
         if bar_dict[symbol].close < context.stocks[symbol]["price"]*context.BUY_LOSS:
 
-            if len(get_positions()) < context.STOCKS_NUM:
+            # 起稳
+            if bar_dict[symbol].close > bar_dict[symbol].prev_close:
+
                 print(f"买入{symbol} {(bar_dict[symbol].close/context.stocks[symbol]['price']-1)*100:.2f}%")
                 # 购买该票
                 order_target_percent(symbol, 1/context.STOCKS_NUM)
 
                 del context.stocks[symbol]
                 # 记录购买日期
-                context.my_info[symbol] = {
+                context.params[symbol] = {
                     "day": day,
-                    "price": bar_dict[symbol].close,
+                    "TAKE_PROFIT": context.TAKE_PROFIT,
+                    "STOP_LOSS": context.STOP_LOSS,
                 }
 
 
@@ -111,5 +122,4 @@ def after_trading(context):
                 context.stocks[order_book_id] = {
                     "day": day,
                     "price": historys['close'][-1],
-                    "count": 1,
                 }
