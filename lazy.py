@@ -23,8 +23,10 @@ def init(context):
     context.FREQUENCY = '1d'
 
     context.WAIT_DAYS = config.getfloat('POLICY', 'WAIT_DAYS')
+
     context.DRAW_DOWN = config.getfloat('POLICY', 'DRAW_DOWN')
     context.BUY_LOSS = config.getfloat('POLICY', 'BUY_LOSS')
+
     context.TAKE_PROFIT = config.getfloat('POLICY', 'TAKE_PROFIT')
     context.STOP_LOSS = config.getfloat('POLICY', 'STOP_LOSS')
 
@@ -46,21 +48,29 @@ def handle_bar(context, bar_dict):
         # 1. 成本 = 市值-盈利
         # 2. 市值/成本
         profit = position.market_value/(position.market_value-position.pnl)
-
-        if profit < context.params[position.order_book_id]["STOP_LOSS"]:
+        #print(f"{position.order_book_id} {(context.params[position.order_book_id]['STOP_LOSS']-1)*100:.2f}% {(context.params[position.order_book_id]['TAKE_PROFIT']-1)*100:.2f}% {(profit-1)*100:.2f}%")
+        if profit < context.params[position.order_book_id]['STOP_LOSS']:
             # 进行清仓
-            print(f"止损卖出{position.order_book_id} {(profit-1)*100:.2f}%")
+            print(f"止损卖出 {position.order_book_id} {(profit-1)*100:.2f}%")
             order_target_percent(position.order_book_id, 0)
-        elif profit > context.params[position.order_book_id]["TAKE_PROFIT"]:
-            # 滑动窗口
-            print(f"更新{position.order_book_id} {(profit-1)*100:.2f}%")
-            context.params[position.order_book_id]["STOP_LOSS"] = context.params[position.order_book_id]["TAKE_PROFIT"] - context.SHIFT
-            context.params[position.order_book_id]["TAKE_PROFIT"] = context.params[position.order_book_id]["TAKE_PROFIT"] + context.SHIFT
-            context.params[position.order_book_id]["day"] = day
+            continue
+        if profit > context.TAKE_PROFIT:
+            # 进行清仓
+            print(f"止盈卖出 {position.order_book_id} {(profit-1)*100:.2f}%")
+            order_target_percent(position.order_book_id, 0)
+            continue
+        if profit > context.params[position.order_book_id]['TAKE_PROFIT']:
+            # 动态调整
+            print(f"动态调整止损区间 {position.order_book_id} {(profit-1)*100:.2f}%")
+            context.params[position.order_book_id]['STOP_LOSS'] = context.params[position.order_book_id]['TAKE_PROFIT'] - context.SHIFT
+            context.params[position.order_book_id]['TAKE_PROFIT'] += context.SHIFT
+            # 不更新day
+            continue
         if (day - context.params[position.order_book_id]["day"]).days > context.POSITION_DAY:
             # 进行清仓
-            print(f"超期卖出{position.order_book_id} {(profit-1)*100:.2f}%")
+            print(f"超期卖出 {position.order_book_id} {(profit-1)*100:.2f}%")
             order_target_percent(position.order_book_id, 0)
+            continue
 
     # 候选的
     for symbol in list(context.stocks):
@@ -80,18 +90,17 @@ def handle_bar(context, bar_dict):
 
             # 起稳
             if bar_dict[symbol].close > bar_dict[symbol].prev_close:
-
-                print(f"买入{symbol} {(bar_dict[symbol].close/context.stocks[symbol]['price']-1)*100:.2f}%")
+                print(f"买入 {symbol} {(bar_dict[symbol].close/context.stocks[symbol]['price']-1)*100:.2f}%")
                 # 购买该票
                 order_target_percent(symbol, 1/context.STOCKS_NUM)
-
-                del context.stocks[symbol]
                 # 记录购买日期
                 context.params[symbol] = {
                     "day": day,
-                    "TAKE_PROFIT": context.TAKE_PROFIT,
                     "STOP_LOSS": context.STOP_LOSS,
+                    "TAKE_PROFIT": 1+context.SHIFT,
                 }
+
+                del context.stocks[symbol]
 
 
 def after_trading(context):
@@ -118,8 +127,12 @@ def after_trading(context):
 
         # 符合指标与否
         if historys['close'][-1] > ma1[-1] > ma2[-1] > ma3[-1] and rsi[-1] > context.RSI1_THR:
-            if order_book_id not in context.stocks:
+            if order_book_id in context.stocks:
+                # 刷新日期
+                context.stocks[order_book_id]['day'] = day
+            else:
                 context.stocks[order_book_id] = {
                     "day": day,
                     "price": historys['close'][-1],
                 }
+
